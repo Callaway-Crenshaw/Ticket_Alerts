@@ -9,17 +9,15 @@ from email.message import EmailMessage
 # NOTE: Ensure SLACK_WEBHOOK_URL_REGULAR and SLACK_WEBHOOK_URL_URGENT are defined in your config.py
 from config import *
 
-# --- 1. CONNECTWISE API FUNCTION ---
 def get_all_matching_tickets():
     """
     Connects to CW API and retrieves ALL tickets based on the configured 
-    board/status names (ignoring last_id for now).
+    board/status names.
     Returns a list of all ticket objects matching the criteria.
     """
     all_tickets = []
 
     # 1. Prepare Authentication Header (uses Basic Auth)
-    # Format is CompanyID+PublicKey:PrivateKey
     auth_string = f"{CW_COMPANY_ID}+{CW_PUBLIC_KEY}:{CW_PRIVATE_KEY}"
     encoded_auth = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
 
@@ -30,11 +28,13 @@ def get_all_matching_tickets():
     }
 
     # 2. Define the API Request URL and Filter
-    # CRITICAL CHANGE: Filter for the correct board and status, but NOT by ID
     conditions = f"board/name=\"{CW_BOARD_NAME}\" and status/name=\"{CW_STATUS_NAME}\""
     url = f"{CW_BASE_URL}/service/tickets?conditions={conditions}&orderBy=id asc&pageSize=100"
 
     print(f"Checking CW API for ALL matching tickets with condition: {conditions}")
+    
+    # *** DEBUGGING ADDITION: Print the full URL to verify filter construction ***
+    print(f"CW API URL being used: {url}")
     
     try:
         response = requests.get(url, headers=headers)
@@ -51,34 +51,23 @@ def get_all_matching_tickets():
         print(f"🛑 CW API Request Failed. Check credentials/URL/filters. Error: {e}")
         return []
 
-# --- 2. ALERTING FUNCTIONS ---
+# --- 2. ALERTING FUNCTIONS (No changes needed here, relies on config checks) ---
 
-# MODIFICATION: Added optional 'webhook_url' argument, defaulting to REGULAR
 def send_slack_webhook(message_title, message_body, color=16711680, webhook_url=SLACK_WEBHOOK_URL_REGULAR):
     """
     Sends an alert message using a Slack Webhook to the specified URL.
-    Uses the 'attachments' format to include a color sidebar, title, and body.
-    Default color is Red (16711680) for alerts.
     """
-    # NOTE: Checks the passed/default webhook_url
-    if not webhook_url or webhook_url == "SLACK_WEBHOOK_URL_REGULAR" or webhook_url == "SLACK_WEBHOOK_URL_URGENT":
-        # A simple check in case the config file has the placeholder
-        print(f"⚠️ Slack Webhook URL ({'URGENT' if webhook_url == SLACK_WEBHOOK_URL_URGENT else 'REGULAR'}) not configured. Skipping Slack alert.")
+    if not webhook_url or "PLACEHOLDER" in webhook_url:
+        print(f"⚠️ Slack Webhook URL not configured. Skipping Slack alert.")
         return False
-    
-    # Slack colors are hex strings, Discord colors were decimal integers.
-    # Convert the decimal integer to a 6-digit hex string for Slack.
+        
     hex_color = f'#{color:06x}'
-
-    # Slack Attachment structure for rich formatting with a color bar
     payload = {
         "attachments": [
             {
                 "color": hex_color, 
-                # Title uses an optional leading emoji/indicator which is handled in __main__
                 "title": message_title,
                 "text": message_body,
-                # Use Unix timestamp (seconds since epoch) for Slack's timestamp
                 "ts": int(datetime.datetime.now().timestamp()),
                 "footer": "Automated ConnectWise Alert"
             }
@@ -87,20 +76,14 @@ def send_slack_webhook(message_title, message_body, color=16711680, webhook_url=
 
     try:
         response = requests.post(
-            webhook_url, # CRITICAL CHANGE: Use the specific or default URL
+            webhook_url,
             data=json.dumps(payload),
             headers={"Content-Type": "application/json"},
             timeout=5
         )
-        response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
+        response.raise_for_status()
         
-        if color == 3066993: # Green color for 'All Scheduled' success
-            print("✅ Slack 'All Current Tickets are Scheduled' confirmation sent.")
-        elif color == 16776960: # Yellow/Orange color for 'Existing Tickets' status
-            print("✅ Slack existing ticket status update sent.")
-        else:
-            print(f"✅ Slack Webhook alert sent successfully to {'URGENT' if webhook_url == SLACK_WEBHOOK_URL_URGENT else 'REGULAR'} channel.") # Updated print statement
-            
+        print(f"✅ Slack Webhook alert sent successfully to {'URGENT' if webhook_url == SLACK_WEBHOOK_URL_URGENT else 'REGULAR'} channel.")
         return True
     except requests.exceptions.RequestException as e:
         print(f"🛑 Failed to send Slack Webhook: {e}")
@@ -108,7 +91,6 @@ def send_slack_webhook(message_title, message_body, color=16711680, webhook_url=
 
 def send_email(subject, body, recipient):
     """Generic function to handle email/SMS sending using SMTP settings from config.py."""
-    
     if not all([SMTP_SERVER, SENDER_EMAIL, SENDER_PASSWORD]):
         print("⚠️ SMTP credentials not fully configured. Skipping email/SMS alert.")
         return False
@@ -120,10 +102,9 @@ def send_email(subject, body, recipient):
     msg['To'] = recipient
 
     try:
-        # Connect to SMTP server (using STARTTLS for port 587)
         with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
             server.starttls()
-            server.login(SENDER_EMAIL, SENDER_PASSWORD) # Uses the App Password
+            server.login(SENDER_EMAIL, SENDER_PASSWORD)
             server.send_message(msg)
         print("✅ SMS/Email alert sent successfully.")
         return True
@@ -134,13 +115,10 @@ def send_email(subject, body, recipient):
 def format_ticket_message(ticket, for_slack=False):
     """
     Formats a single ticket's data into a concise string.
-    Returns rich format for Slack (by setting for_slack=True) by default, or plain format for SMS.
     """
-    
     priority_name = ticket.get('priority', {}).get('name', 'N/A')
     site_name = ticket.get('site', {}).get('name', 'N/A')
     
-    # Map long priority names to concise abbreviations
     priority_map = {
         'Priority 1 - Critical': 'P1-CRIT',
         'Priority 2 - High': 'P2-HIGH',
@@ -150,10 +128,8 @@ def format_ticket_message(ticket, for_slack=False):
     }
     abbreviated_priority = priority_map.get(priority_name, priority_name)
     
-    # Renamed parameter to be more explicit for the new target
     if for_slack:
-        # Rich Format for Slack/Discord Embed: TICKETID | PRIORITY | SITE_NAME
-        # Slack uses Markdown for formatting (bold via *, inline code via `)
+        # Rich Format for Slack: TICKETID | PRIORITY | SITE_NAME
         return f"`{ticket['id']}` | *{abbreviated_priority}* | {site_name}"
     else:
         # Plain Format for SMS/Email Subject: TICKETID | PRIORITY | SITE_NAME
@@ -170,7 +146,7 @@ if __name__ == "__main__":
             last_id_content = f.read().strip()
             last_id = int(last_id_content) if last_id_content.isdigit() else 0
     except Exception:
-        last_id = 0  # Start from 0 if file is missing or cannot be read
+        last_id = 0 
     
     print(f"Last processed ID: {last_id}")
 
@@ -178,25 +154,19 @@ if __name__ == "__main__":
     all_matching_tickets = get_all_matching_tickets()
     
     # 3. Filter for NEW tickets (those we haven't processed yet)
-    new_tickets = [ticket for ticket in all_matching_tickets if ticket['id'] > last_id]
+    new_tickets = [ticket for ticket in all_matching_tickets if ticket.get('id', 0) > last_id]
     
-    # Lists to store successfully formatted messages
     slack_alert_messages = [] 
     sms_alert_messages = []
     
-    # Variable to track the highest ID that was successfully processed
+    # Variable to track the highest ID that was successfully formatted
     last_successfully_formatted_id = 0 
-    
-    # Flags to track success of each alert type
-    slack_success = False 
-    sms_success = False
 
     if new_tickets:
         print(f"Processing {len(new_tickets)} new ticket(s)...")
         
         for ticket in new_tickets:
             # 1. Format the message for Slack (rich text)
-            # NOTE: Updated format_ticket_message parameter to reflect new target
             slack_message = format_ticket_message(ticket, for_slack=True) 
             slack_alert_messages.append(slack_message)
             
@@ -205,7 +175,7 @@ if __name__ == "__main__":
             sms_alert_messages.append(sms_message)
             
             # Use the newest ID for updating the log file
-            last_successfully_formatted_id = max(last_successfully_formatted_id, ticket['id'])
+            last_successfully_formatted_id = max(last_successfully_formatted_id, ticket.get('id', 0))
         
         # --- PREPARE MESSAGES ---
         
@@ -213,41 +183,34 @@ if __name__ == "__main__":
         slack_title = f"🚨 {len(new_tickets)} NEW ConnectWise Ticket Alert(s)"
         slack_body = "\n".join(slack_alert_messages) 
 
-        # 2. SMS Message (Compact format for subject line)
+        # 2. SMS Message
         consolidated_alert_string = " / ".join(sms_alert_messages)
         consolidated_subject = f"CW Alert: {consolidated_alert_string}"
-        consolidated_body = "" # SMS body is usually left blank when the subject is the content
+        consolidated_body = ""
 
         # --- SEND ALERTS ---
 
         # A. Send to Slack URGENT Webhook (New Tickets)
-        # CRITICAL CHANGE: Pass SLACK_WEBHOOK_URL_URGENT
         slack_success = send_slack_webhook(slack_title, slack_body, webhook_url=SLACK_WEBHOOK_URL_URGENT)
         
-        # B. Send to SMS via Email Gateway (ONLY sent if tickets are found)
+        # B. Send to SMS via Email Gateway 
         sms_success = send_email(consolidated_subject, consolidated_body, SMS_RECIPIENT_EMAIL)
         
-        # --- UPDATE LAST ID LOGIC ---
-        
-        # Update last_run_id.txt ONLY if at least one alert method succeeded
-        send_success = slack_success or sms_success 
-        
-        if send_success:
-            if last_successfully_formatted_id > 0:
-                try:
-                    with open('last_run_id.txt', 'w') as f:
-                        f.write(str(last_successfully_formatted_id))
-                    print(f"✅ Last processed ID successfully updated to: {last_successfully_formatted_id}")
-                except Exception as e:
-                    print(f"🛑 ERROR: Could not write last processed ID to file. Error: {e}")
-            else:
-                # Should not happen if new_tickets > 0, but good practice
-                print("⚠️ No new ID to log, but alerts succeeded.")
-        else:
-            print("🛑 ALL ALERTS FAILED. last_run_id.txt remains unchanged.")
-            
+    # --- UPDATE LAST ID LOGIC (The Fix for Repeating Alerts) ---
+    
+    # CRITICAL CHANGE: Update last_run_id.txt ONLY if we processed a new ticket ID, 
+    # regardless of whether the alert itself failed (to prevent repeats on persistent alert failure)
+    if last_successfully_formatted_id > 0:
+        try:
+            with open('last_run_id.txt', 'w') as f:
+                f.write(str(last_successfully_formatted_id))
+            print(f"✅ Last processed ID successfully updated to: {last_successfully_formatted_id}")
+        except Exception as e:
+            print(f"🛑 ERROR: Could not write last processed ID to file. Error: {e}")
+    elif new_tickets:
+        print("⚠️ No new ID to log, perhaps ticket IDs were not integers.")
     else: # No NEW tickets found
-        
+    
         # Check if ANY tickets exist at all (old or new)
         if len(all_matching_tickets) > 0:
             print(f"No NEW tickets found, but {len(all_matching_tickets)} existing tickets still match criteria. Sending status update to Slack.")
@@ -255,14 +218,12 @@ if __name__ == "__main__":
             # 1. Format all existing tickets for the Slack status message
             slack_status_messages = []
             for ticket in all_matching_tickets:
-                # Use format_ticket_message with for_slack=True for rich formatting
                 slack_status_messages.append(format_ticket_message(ticket, for_slack=True))
 
             # 2. Send Status Update to REGULAR Webhook
             status_title = f"⚠️ {len(all_matching_tickets)} Existing Ticket(s) Acknowledged"
             status_body = "\n".join(slack_status_messages)
-            # Use Yellow/Orange color (16776960 is decimal for #FFFF00)
-            # CRITICAL CHANGE: Pass SLACK_WEBHOOK_URL_REGULAR
+            # Yellow/Orange color (16776960 is decimal for #FFFF00)
             send_slack_webhook(status_title, status_body, color=16776960, webhook_url=SLACK_WEBHOOK_URL_REGULAR) 
             
         else:
@@ -270,10 +231,7 @@ if __name__ == "__main__":
             print("No new tickets and no existing tickets found on the monitored board/status.")
             no_ticket_title = "✅ Ticket Status Update"
             no_ticket_body = "All Current Tickets are Scheduled"
-            # Use Green color (3066993 is decimal for #2ecc71) for the success message
-            # CRITICAL CHANGE: Pass SLACK_WEBHOOK_URL_REGULAR
+            # Green color (3066993 is decimal for #2ecc71)
             send_slack_webhook(no_ticket_title, no_ticket_body, color=3066993, webhook_url=SLACK_WEBHOOK_URL_REGULAR) 
-        
-        # SMS is SKIPPED entirely when no NEW tickets are found.
-    
+            
     print("--- Script Finished ---")
