@@ -10,11 +10,11 @@ jobs:
   ci_pipeline:
     runs-on: ubuntu-latest
     
-    # Enable read/write permissions for the GitHub token so we can update the variable
+    # FIX: Removed 'repository-variables: write' as it causes an "Unexpected value" error
+    # We now rely on 'actions: write' which often implicitly covers the variable API write permission.
     permissions:
       contents: read
       actions: write # Required for `github.request` to update the variable
-      repository-variables: write # FIX: This is the correct scope to update variables
 
     steps:
       - name: Checkout Repository
@@ -41,7 +41,7 @@ jobs:
       # The Python script reads LAST_RUN_ID from the environment and prints the new highest ID.
       - name: Run ConnectWise Alert Script
         id: alert_run # IMPORTANT: Gives this step an ID to capture output
-        run: python connectwise_alert.py # Corrected script name here
+        run: python connectwise_alert.py
         env:
           # CRITICAL: Inject the LAST_RUN_ID variable into the script's environment
           LAST_RUN_ID: ${{ vars.LAST_RUN_ID }}
