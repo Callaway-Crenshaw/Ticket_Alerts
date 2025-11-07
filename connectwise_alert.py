@@ -140,15 +140,21 @@ if __name__ == "__main__":
     
     print("--- ConnectWise Ticket Alert Script Started ---")
     
-    # 1. Read the last processed ID from the file (The "Alert Once" Logic)
-    try:
-        with open('last_run_id.txt', 'r') as f:
-            last_id_content = f.read().strip()
-            last_id = int(last_id_content) if last_id_content.isdigit() else 0
-    except Exception:
-        last_id = 0 
+    # 1. NEW LOGIC: Read from Environment Variable (for GitHub/Cloud persistence)
+    # Default is 0 if not found or empty
+    last_id = int(os.environ.get('LAST_RUN_ID', 0))
+
+    # 2. Fallback: If ENV is 0, try to read the local file (for local VS Code testing)
+    if last_id == 0:
+        try:
+            with open('last_run_id.txt', 'r') as f:
+                last_id_content = f.read().strip()
+                last_id = int(last_id_content) if last_id_content.isdigit() else 0
+        except Exception:
+            # If file doesn't exist, last_id remains 0
+            pass 
     
-    print(f"Last processed ID: {last_id}")
+    print(f"Last processed ID: {last_id} (Source: {'Environment Variable' if os.environ.get('LAST_RUN_ID') else 'Local File/Default'})")
 
     # 2. Get ALL tickets matching the criteria
     all_matching_tickets = get_all_matching_tickets()
@@ -198,15 +204,20 @@ if __name__ == "__main__":
         
     # --- UPDATE LAST ID LOGIC (The Fix for Repeating Alerts) ---
     
-    # CRITICAL CHANGE: Update last_run_id.txt ONLY if we processed a new ticket ID, 
-    # regardless of whether the alert itself failed (to prevent repeats on persistent alert failure)
+    # NEW LOGIC: Instead of writing to a file (which is lost), print the ID 
+    # using the GitHub Actions command format so the workflow can capture it.
     if last_successfully_formatted_id > 0:
-        try:
-            with open('last_run_id.txt', 'w') as f:
-                f.write(str(last_successfully_formatted_id))
-            print(f"✅ Last processed ID successfully updated to: {last_successfully_formatted_id}")
-        except Exception as e:
-            print(f"🛑 ERROR: Could not write last processed ID to file. Error: {e}")
+        # This print line sets an output variable named 'next_id' in the GitHub Actions step
+        print(f"::set-output name=next_id::{last_successfully_formatted_id}")
+        print(f"✅ New highest ticket ID processed: {last_successfully_formatted_id}. This value will be saved for the next run.")
+
+        # Revert to local file writing for local testing only
+        if not os.environ.get('LAST_RUN_ID'):
+            try:
+                with open('last_run_id.txt', 'w') as f:
+                    f.write(str(last_successfully_formatted_id))
+            except Exception as e:
+                print(f"🛑 ERROR: Could not write last processed ID to file (Local Test Only). Error: {e}")
     elif new_tickets:
         print("⚠️ No new ID to log, perhaps ticket IDs were not integers.")
     else: # No NEW tickets found
