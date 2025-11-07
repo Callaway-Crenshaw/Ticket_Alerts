@@ -1,6 +1,7 @@
 import requests
 import base64
 import json
+import os
 import datetime
 # Re-adding imports required for SMS/Email
 import smtplib
@@ -246,3 +247,4 @@ if __name__ == "__main__":
             send_slack_webhook(no_ticket_title, no_ticket_body, color=3066993, webhook_url=SLACK_WEBHOOK_URL_REGULAR) 
             
     print("--- Script Finished ---")
+
