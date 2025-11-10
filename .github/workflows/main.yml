@@ -5,23 +5,20 @@ name: 🎫 ConnectWise Ticket Alert
 # Run every 15 minutes
 on:
   schedule:
-    # Runs at minute 0, 15, 30, and 45 of every hour
     - cron: '*/15 * * * *'
-  # Allows manual triggering from the GitHub Actions tab
   workflow_dispatch:
 
 jobs:
   run_alert_script:
     runs-on: ubuntu-latest
     
-    # 💥 CRITICAL: This must be at the same level as 'runs-on' 💥
+    # This block must use 2-space indentation
     permissions:
       contents: read
-      variables: write # Allows updating the LAST_RUN_ID repository variable
+      variables: write 
     
-    # 1. Fetch the simple LAST_RUN_ID variable directly
     env:
-      LAST_RUN_ID: ${{ vars.LAST_RUN_ID }} # Retrieves the current '0' or last saved ID
+      LAST_RUN_ID: ${{ vars.LAST_RUN_ID }}
 
     steps:
       - name: ⬇️ Checkout Repository
