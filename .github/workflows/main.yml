@@ -19,8 +19,13 @@ jobs:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
 
-      # ... (Steps for Set up Python, Install Dependencies, and Set Environment Variables remain the same) ...
-
+      - name: 🔑 Set Environment Variables (Secrets)
+        id: set_secrets
+        run: |
+          # The corrected secret format allows for a simpler, direct read.
+          echo "Setting environment variables from FULL_CONFIG_SECRETS..."
+          echo "${{ secrets.FULL_CONFIG_SECRETS }}" >> "$GITHUB_ENV"
+        shell: bash
       - name: 🚀 Run Python Alert Script
         id: run_script
         run: python connectwise_alert.py
