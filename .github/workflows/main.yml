@@ -12,7 +12,7 @@ jobs:
   run_alert_script:
     runs-on: ubuntu-latest
     
-    # CRITICAL: Grants the token permission to update the LAST_RUN_ID variable
+    # CRITICAL FIX 1: Grants the token permission to update the LAST_RUN_ID variable
     permissions:
       contents: write 
     
@@ -52,12 +52,15 @@ jobs:
         if: ${{ success() && steps.run_script.outputs.next_id != '' }}
         uses: actions/github-script@v7
         with:
+          # CRITICAL FIX 2: Explicitly pass the default token
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
           script: |
             const newId = '${{ steps.run_script.outputs.next_id }}';
             
             console.log(`Attempting to save ID: ${newId}`);
             
-            # FIX: Use updateRepoVariable function for repository variables
+            // CRITICAL FIX 3: Use updateRepoVariable function
             await github.rest.actions.updateRepoVariable({
               owner: context.repo.owner,
               repo: context.repo.repo,
