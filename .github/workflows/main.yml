@@ -79,7 +79,7 @@ jobs:
       - name: 💾 Commit Last Processed ID File
         # Python script MUST have updated 'last_run_id.txt' before this step runs
         if: ${{ success() && steps.run_script.outputs.next_id != '' }}
-        uses: stefanprodan/commit-action@v5
+        uses: Callaway-Crenshaw/Ticket_Alerts
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           # The file created/updated by the Python script
