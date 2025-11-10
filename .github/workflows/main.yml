@@ -38,8 +38,6 @@ jobs:
         run: python connectwise_alert.py
         shell: bash
 
-      ---
-
       # 2. Save the 'next_id' output from the script back to the variable (FIXED)
       - name: 💾 Save Last Processed ID for Next Run
         # Only run if the script successfully set an ID and the step passed
