@@ -3,11 +3,10 @@ import base64
 import json
 import os
 import datetime
-# Re-adding imports required for SMS/Email
 import smtplib
 from email.message import EmailMessage
-# We keep the import for config, assuming SLACK_WEBHOOK_URLs and CW credentials are here.
-# NOTE: Ensure SLACK_WEBHOOK_URL_REGULAR and SLACK_WEBHOOK_URL_URGENT are defined in your config.py
+# NOTE: config.py is assumed to be in the same directory or environment
+# and contains all the CW and SMTP/Slack variables.
 from config import *
 
 def get_all_matching_tickets():
@@ -33,8 +32,6 @@ def get_all_matching_tickets():
     url = f"{CW_BASE_URL}/service/tickets?conditions={conditions}&orderBy=id asc&pageSize=100"
 
     print(f"Checking CW API for ALL matching tickets with condition: {conditions}")
-    
-    # *** DEBUGGING ADDITION: Print the full URL to verify filter construction ***
     print(f"CW API URL being used: {url}")
     
     try:
@@ -52,7 +49,7 @@ def get_all_matching_tickets():
         print(f"🛑 CW API Request Failed. Check credentials/URL/filters. Error: {e}")
         return []
 
-# --- 2. ALERTING FUNCTIONS (No changes needed here, relies on config checks) ---
+# --- 2. ALERTING FUNCTIONS ---
 
 def send_slack_webhook(message_title, message_body, color=16711680, webhook_url=SLACK_WEBHOOK_URL_REGULAR):
     """
@@ -183,7 +180,7 @@ if __name__ == "__main__":
             
             # Use the newest ID for updating the log file
             last_successfully_formatted_id = max(last_successfully_formatted_id, ticket.get('id', 0))
-        
+            
         # --- PREPARE MESSAGES ---
         
         # 1. Slack Message (using rich format)
@@ -205,24 +202,31 @@ if __name__ == "__main__":
         
     # --- UPDATE LAST ID LOGIC (The Fix for Repeating Alerts) ---
     
-    # NEW LOGIC: Instead of writing to a file (which is lost), print the ID 
-    # using the GitHub Actions command format so the workflow can capture it.
+    # FIX: Use the recommended GITHUB_OUTPUT file for persistence
     if last_successfully_formatted_id > 0:
-        # This print line sets an output variable named 'next_id' in the GitHub Actions step
-        print(f"::set-output name=next_id::{last_successfully_formatted_id}")
-        print(f"✅ New highest ticket ID processed: {last_successfully_formatted_id}. This value will be saved for the next run.")
-
-        # Revert to local file writing for local testing only
+        
+        # 1. Write the output to the GITHUB_OUTPUT file
+        if 'GITHUB_OUTPUT' in os.environ:
+            try:
+                # Write output to the file in the format key=value
+                with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+                    f.write(f"next_id={last_successfully_formatted_id}\n")
+                print(f"✅ New highest ticket ID processed: {last_successfully_formatted_id}. This value will be saved for the next run.")
+            except Exception as e:
+                print(f"🛑 ERROR: Could not write next_id to GITHUB_OUTPUT file. Error: {e}")
+        
+        # 2. Revert to local file writing for local testing only 
         if not os.environ.get('LAST_RUN_ID'):
             try:
                 with open('last_run_id.txt', 'w') as f:
                     f.write(str(last_successfully_formatted_id))
             except Exception as e:
                 print(f"🛑 ERROR: Could not write last processed ID to file (Local Test Only). Error: {e}")
+        
     elif new_tickets:
         print("⚠️ No new ID to log, perhaps ticket IDs were not integers.")
     else: # No NEW tickets found
-    
+        
         # Check if ANY tickets exist at all (old or new)
         if len(all_matching_tickets) > 0:
             print(f"No NEW tickets found, but {len(all_matching_tickets)} existing tickets still match criteria. Sending status update to Slack.")
@@ -247,4 +251,3 @@ if __name__ == "__main__":
             send_slack_webhook(no_ticket_title, no_ticket_body, color=3066993, webhook_url=SLACK_WEBHOOK_URL_REGULAR) 
             
     print("--- Script Finished ---")
-
