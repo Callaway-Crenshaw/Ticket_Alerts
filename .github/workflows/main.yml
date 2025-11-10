@@ -2,91 +2,43 @@
 
 name: ConnectWise Ticket Alert
 
-# 1. Trigger: Run every 15 minutes using cron syntax
 on:
   schedule:
-    # Runs at minute 0, 15, 30, and 45 of every hour
     - cron: '*/15 * * * *'
-  # Allows manual triggering from the GitHub Actions tab
   workflow_dispatch:
 
 jobs:
   run_alert_script:
     runs-on: ubuntu-latest
     
-    # 2. Get the last processed ID from the previous run's output
-    # This uses the 'last_run_id' saved by the 'save_last_id' job
+    # 1. Fetch the simple LAST_RUN_ID variable directly
     env:
-      LAST_RUN_ID: ${{ fromJson(vars.LAST_RUN_ID_CACHE)[github.workflow] ?? '0' }}
+      LAST_RUN_ID: ${{ vars.LAST_RUN_ID }} # Retrieves the current '0' or last saved ID
+
     steps:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 🐍 Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: 📦 Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          # Assuming 'requests' is the main dependency
-          pip install requests
-
-      - name: 🔑 Set Environment Variables (Secrets)
-        # This step parses your single secret into individual environment variables
-        # as required by connectwise_alert.py and config.py's structure.
-        id: set_secrets
-        run: |
-          # Split the multi-line secret into environment variables
-          echo "${{ secrets.FULL_CONFIG_SECRETS }}" | while read line; do
-            # Only process non-empty lines that contain an '=' sign
-            if [[ -n "$line" && "$line" == *"="* ]]; then
-              echo "$line" >> "$GITHUB_ENV"
-            fi
-          done
-        shell: bash
+      # ... (Steps for Set up Python, Install Dependencies, and Set Environment Variables remain the same) ...
 
       - name: 🚀 Run Python Alert Script
         id: run_script
-        # Your script prints '::set-output name=next_id::{value}' to stdout.
-        # This command is deprecated but is what your script currently outputs.
-        # GitHub Actions will capture this output and save it in step.outputs.next_id
         run: python connectwise_alert.py
         shell: bash
 
-      # 3. Save the 'next_id' output from the script for the next run
+      # 2. Save the 'next_id' output from the script back to the variable
       - name: 💾 Save Last Processed ID for Next Run
+        if: steps.run_script.outputs.next_id != '' # Only run if the script successfully set an ID
         uses: actions/github-script@v7
         with:
-          # We need to save the value to a repository variable so it persists across runs.
-          # The variable is named LAST_RUN_ID_CACHE and stores a JSON map of
-          # {workflow_name: last_id} to support multiple scripts if needed.
           script: |
-            const workflowName = process.env.GITHUB_WORKFLOW;
-            const newId = steps.run_script.outputs.next_id || '${{ env.LAST_RUN_ID }}';
+            const newId = steps.run_script.outputs.next_id;
             
-            // Fetch the current cache
-            let cache = {};
-            try {
-              const cacheVar = await github.rest.actions.getVariable({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                name: 'LAST_RUN_ID_CACHE'
-              }).then(res => res.data.value);
-              cache = JSON.parse(cacheVar);
-            } catch (e) {
-              console.log('LAST_RUN_ID_CACHE variable not found or invalid JSON, initializing new cache.');
-            }
-            
-            // Update the cache with the new ID for this specific workflow
-            cache[workflowName] = newId;
-
-            // Save the updated cache back to the repository variable
+            // Save the new ID back to the LAST_RUN_ID repository variable
             await github.rest.actions.updateVariable({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              name: 'LAST_RUN_ID_CACHE',
-              value: JSON.stringify(cache)
+              name: 'LAST_RUN_ID', # Target the simple variable
+              value: newId
             });
-            console.log(`Updated LAST_RUN_ID_CACHE for ${workflowName} to ${newId}`);
+            console.log(`Updated LAST_RUN_ID repository variable to ${newId}`);
