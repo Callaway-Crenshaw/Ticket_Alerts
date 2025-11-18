@@ -1,3 +1,20 @@
+.github/workflows/alert_script.yml
+
+name: 🎫 ConnectWise Ticket Alert
+
+Run every 15 minutes
+
+on:
+schedule:
+- cron: '*/15 * * * *'
+workflow_dispatch:
+
+jobs:
+run_alert_script:
+runs-on: ubuntu-latest
+
+# Permission for committing a file change
+# NOTE: The file-based persistence requires 'contents: write' permission.
 permissions:
   contents: write 
 
@@ -74,4 +91,3 @@ steps:
       files: last_run_id.txt
       branch: main # CHANGE TO 'master' or your default branch name if different
       allow_empty: false
-
