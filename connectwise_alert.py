@@ -190,8 +190,19 @@ if __name__ == "__main__":
         # A. Send to Slack URGENT Webhook (New Tickets)
         slack_success = send_slack_webhook(slack_title, slack_body, webhook_url=SLACK_WEBHOOK_URL_URGENT)
         
-        # B. Send to SMS via Email Gateway 
-        sms_success = send_email(consolidated_subject, consolidated_body, SMS_RECIPIENT_EMAIL)
+        # B. Send to SMS via Email Gateway - Loop through all recipients
+        # The variable 'sms_success' is no longer a simple boolean; we'll check status for each.
+        all_sms_sent = True # Assume success unless one fails
+        for recipient in SMS_RECIPIENT_EMAILS:
+            # sms_success for this individual recipient
+            success = send_email(consolidated_subject, consolidated_body, recipient)
+            if not success:
+                all_sms_sent = False # If any fail, the overall status is False
+                
+        if all_sms_sent:
+            print(f"✅ SMS alerts successfully sent to all {len(SMS_RECIPIENT_EMAILS)} recipients.")
+        else:
+            print(f"⚠️ At least one SMS alert failed to send.")
         
     # --- UPDATE LAST ID LOGIC (The Fix for File Persistence) ---
     
@@ -247,4 +258,5 @@ if __name__ == "__main__":
             send_slack_webhook(no_ticket_title, no_ticket_body, color=3066993, webhook_url=SLACK_WEBHOOK_URL_REGULAR) 
             
     print("--- Script Finished ---")
+
 
