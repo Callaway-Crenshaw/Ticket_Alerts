@@ -29,4 +29,6 @@ except (TypeError, ValueError):
 
 SENDER_EMAIL = os.environ.get('SENDER_EMAIL')
 SENDER_PASSWORD = os.environ.get('SENDER_PASSWORD')
-SMS_RECIPIENT_EMAIL = os.environ.get('SMS_RECIPIENT_EMAIL')
+SMS_RECIPIENT_EMAILS = [
+    "12627575505@txt.att.net",
+    "14054039513@vtext.com"]
